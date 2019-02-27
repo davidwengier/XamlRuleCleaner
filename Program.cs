@@ -79,19 +79,9 @@ namespace XamlSort
             var baseIndent = (level - 1) * 2;
             writer.WriteWhitespace(new string(' ', baseIndent));
             writer.WriteStartElement(node.Name, node.NamespaceURI);
-            bool indentAttribute = false;
             foreach (var att in Sort(node.Attributes))
             {
-                if (indentAttribute)
-                {
-                    writer.WriteWhitespace(new string(' ', baseIndent + 1 + node.Name.Length + 1));
-                }
                 writer.WriteAttributeString(att.Name, att.Value);
-                if (node.Attributes.Count > 1)
-                {
-                    writer.WriteWhitespace(Environment.NewLine);
-                    indentAttribute = true;
-                }
             }
             if (node.ChildNodes.Count > 0)
             {
