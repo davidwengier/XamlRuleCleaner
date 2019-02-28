@@ -11,11 +11,15 @@ namespace XamlSort
     /// </summary>
     public class Program
     {
+        private static bool _autoIndent;
+
         /// <summary>
         /// Cleans up XAML Rules
         /// </summary>
-        public static void Main(string directory = null)
+        public static void Main(string directory = null, bool autoIndent = false)
         {
+            _autoIndent = autoIndent;
+
             directory ??= Environment.CurrentDirectory;
             foreach (string file in Directory.EnumerateFiles(directory, "*.xaml"))
             {
@@ -25,7 +29,7 @@ namespace XamlSort
 
         private static void SortFile(string file)
         {
-            XmlDocument doc = new XmlDocument();
+            var doc = new XmlDocument();
             doc.LoadXml(File.ReadAllText(file));
             doc.PreserveWhitespace = true;
 
@@ -35,24 +39,34 @@ namespace XamlSort
             string tempFile = Path.GetTempFileName();
             try
             {
-                using (XmlWriter writer = XmlWriter.Create(tempFile, new XmlWriterSettings
+                using (var writer = XmlWriter.Create(tempFile, new XmlWriterSettings
                 {
                     // We'll do the whitespace
-                    Indent = false,
+                    Indent = _autoIndent,
+                    NewLineOnAttributes = _autoIndent,
                     WriteEndDocumentOnClose = true
                 }))
                 {
-                    foreach (XmlNode comment in doc.ChildNodes)
+                    foreach (XmlNode node in doc.ChildNodes)
                     {
-                        if (comment is XmlDeclaration decl)
+                        if (node is XmlDeclaration declaration)
                         {
-                            writer.WriteStartDocument();
-                            writer.WriteWhitespace(Environment.NewLine);
+                            // annoyingly passing false to WriteStartDocument writes out 'standalone="no"' so we need to call a different overload
+                            // to preserve the lack of a declaration
+                            if (declaration.Standalone.Length == 0)
+                            {
+                                writer.WriteStartDocument();
+                            }
+                            else
+                            {
+                                writer.WriteStartDocument(declaration.Standalone.Equals("yes", StringComparison.OrdinalIgnoreCase));
+                            }
+                            WriteNewLine(writer);
                         }
-                        else if (comment is XmlComment comm)
+                        else if (node is XmlComment comment)
                         {
-                            writer.WriteComment(comm.Value);
-                            writer.WriteWhitespace(Environment.NewLine);
+                            writer.WriteComment(comment.Value);
+                            WriteNewLine(writer);
                         }
                         else
                         {
@@ -76,8 +90,8 @@ namespace XamlSort
 
         private static void WriteNode(XmlWriter writer, XmlElement node, int level)
         {
-            var baseIndent = (level - 1) * 2;
-            writer.WriteWhitespace(new string(' ', baseIndent));
+            var indent = (level - 1) * 2;
+            WriteIndent(writer, indent);
             writer.WriteStartElement(node.Name, node.NamespaceURI);
             foreach (var att in Sort(node.Attributes))
             {
@@ -85,20 +99,21 @@ namespace XamlSort
             }
             if (node.ChildNodes.Count > 0)
             {
-                writer.WriteWhitespace(Environment.NewLine);
+                WriteNewLine(writer);
                 foreach (var child in Sort(node.Name, node.ChildNodes))
                 {
                     WriteNode(writer, child, level + 1);
                     if (level == 1)
                     {
-                        writer.WriteWhitespace(Environment.NewLine);
+                        WriteNewLine(writer);
                     }
                 }
-                writer.WriteWhitespace(new string(' ', (level - 1) * 2));
+                WriteIndent(writer, indent);
             }
             writer.WriteEndElement();
-            writer.WriteWhitespace(Environment.NewLine);
+            WriteNewLine(writer);
         }
+
 
         private static IEnumerable<XmlElement> Sort(string name, XmlNodeList childNodes)
         {
@@ -111,15 +126,15 @@ namespace XamlSort
                 }
                 yield break;
             }
-            foreach (XmlElement element in childNodes.OfType<XmlElement>().Where(x => x.Name.StartsWith(name + ".", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name))
+            foreach (var element in childNodes.OfType<XmlElement>().Where(x => x.Name.StartsWith(name + ".", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name))
             {
                 yield return element;
             }
-            foreach (XmlElement element in childNodes.OfType<XmlElement>().Where(x => !x.Name.StartsWith(name + ".", StringComparison.OrdinalIgnoreCase)).Where(x => x.HasAttribute("Name")).OrderBy(x => x.Attributes["Name"].Value))
+            foreach (var element in childNodes.OfType<XmlElement>().Where(x => !x.Name.StartsWith(name + ".", StringComparison.OrdinalIgnoreCase)).Where(x => x.HasAttribute("Name")).OrderBy(x => x.Attributes["Name"].Value))
             {
                 yield return element;
             }
-            foreach (XmlElement element in childNodes.OfType<XmlElement>().Where(x => !x.Name.StartsWith(name + ".", StringComparison.OrdinalIgnoreCase)).Where(x => !x.HasAttribute("Name")).OrderBy(x => x.Name))
+            foreach (var element in childNodes.OfType<XmlElement>().Where(x => !x.Name.StartsWith(name + ".", StringComparison.OrdinalIgnoreCase)).Where(x => !x.HasAttribute("Name")).OrderBy(x => x.Name))
             {
                 yield return element;
             }
@@ -136,9 +151,25 @@ namespace XamlSort
                 }
             }
 
-            foreach (XmlAttribute att in attributes.Cast<XmlAttribute>().Where(x => !x.Name.Equals("Name", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name))
+            foreach (var att in attributes.Cast<XmlAttribute>().Where(x => !x.Name.Equals("Name", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name))
             {
                 yield return att;
+            }
+        }
+
+        private static void WriteIndent(XmlWriter writer, int indent)
+        {
+            if (!_autoIndent)
+            {
+                writer.WriteWhitespace(new string(' ', indent));
+            }
+        }
+
+        private static void WriteNewLine(XmlWriter writer)
+        {
+            if (!_autoIndent)
+            {
+                writer.WriteWhitespace(Environment.NewLine);
             }
         }
     }
