@@ -95,7 +95,7 @@ namespace XamlRuleCleaner
                 attributes++;
                 if (indentAttribute)
                 {
-                    writer.WriteIndent(indent + 1 + node.Name.Length + 1);
+                    writer.WriteIndent(indent + 1 + node.Name.Length + (att.Name.Equals("xmlns", StringComparison.Ordinal) ? 0 : 1));
                 }
                 // Set state to element to allow writing attributes (writing whitespace sets it to Content)
                 writer.SetState(XmlWriterState.Element);
