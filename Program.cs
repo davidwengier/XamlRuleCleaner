@@ -4,22 +4,18 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 
-namespace XamlSort
+namespace XamlRuleCleaner
 {
     /// <summary>
     ///  Cleans up XAML Rules
     /// </summary>
     public class Program
     {
-        private static bool _autoIndent;
-
         /// <summary>
         /// Cleans up XAML Rules
         /// </summary>
-        public static void Main(string directory = null, bool autoIndent = false)
+        public static void Main(string directory = null)
         {
-            _autoIndent = autoIndent;
-
             directory ??= Environment.CurrentDirectory;
             foreach (string file in Directory.EnumerateFiles(directory, "*.xaml"))
             {
@@ -42,8 +38,7 @@ namespace XamlSort
                 using (var writer = XmlWriter.Create(tempFile, new XmlWriterSettings
                 {
                     // We'll do the whitespace
-                    Indent = _autoIndent,
-                    NewLineOnAttributes = _autoIndent,
+                    Indent = false,
                     WriteEndDocumentOnClose = true
                 }))
                 {
@@ -61,12 +56,12 @@ namespace XamlSort
                             {
                                 writer.WriteStartDocument(declaration.Standalone.Equals("yes", StringComparison.OrdinalIgnoreCase));
                             }
-                            WriteNewLine(writer);
+                            writer.WriteNewLine();
                         }
                         else if (node is XmlComment comment)
                         {
                             writer.WriteComment(comment.Value);
-                            WriteNewLine(writer);
+                            writer.WriteNewLine();
                         }
                         else
                         {
@@ -91,30 +86,48 @@ namespace XamlSort
         private static void WriteNode(XmlWriter writer, XmlElement node, int level)
         {
             var indent = (level - 1) * 2;
-            WriteIndent(writer, indent);
+            writer.WriteIndent(indent);
             writer.WriteStartElement(node.Name, node.NamespaceURI);
+            bool indentAttribute = false;
+            int attributes = 0;
             foreach (var att in Sort(node.Attributes))
             {
+                attributes++;
+                if (indentAttribute)
+                {
+                    writer.WriteIndent(indent + 1 + node.Name.Length + 1);
+                }
+                // Set state to element to allow writing attributes (writing whitespace sets it to Content)
+                writer.SetState(XmlWriterState.Element);
                 writer.WriteAttributeString(att.Name, att.Value);
+                // Set state back to content to allow writing whitespace without closing the element
+                writer.SetState(XmlWriterState.Content);
+                if (node.Attributes.Count > 1 && attributes != node.Attributes.Count)
+                {
+                    writer.WriteNewLine();
+                    indentAttribute = true;
+                }
             }
+            // Set state to element to allow writing child nodes(writing whitespace sets it to Content)
+            writer.SetState(XmlWriterState.Element);
             if (node.ChildNodes.Count > 0)
             {
-                WriteNewLine(writer);
+                writer.WriteNewLine();
                 foreach (var child in Sort(node.Name, node.ChildNodes))
                 {
                     WriteNode(writer, child, level + 1);
                     if (level == 1)
                     {
-                        WriteNewLine(writer);
+                        writer.WriteNewLine();
                     }
                 }
-                WriteIndent(writer, indent);
+                writer.WriteIndent(indent);
             }
             writer.WriteEndElement();
-            WriteNewLine(writer);
+            writer.WriteNewLine();
         }
 
-
+     
         private static IEnumerable<XmlElement> Sort(string name, XmlNodeList childNodes)
         {
             // don't sort enum values
@@ -154,22 +167,6 @@ namespace XamlSort
             foreach (var att in attributes.Cast<XmlAttribute>().Where(x => !x.Name.Equals("Name", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name))
             {
                 yield return att;
-            }
-        }
-
-        private static void WriteIndent(XmlWriter writer, int indent)
-        {
-            if (!_autoIndent)
-            {
-                writer.WriteWhitespace(new string(' ', indent));
-            }
-        }
-
-        private static void WriteNewLine(XmlWriter writer)
-        {
-            if (!_autoIndent)
-            {
-                writer.WriteWhitespace(Environment.NewLine);
             }
         }
     }
